@@ -3,11 +3,12 @@ use std::{fmt,
             Add,
             Sub,
             Mul,
+            Div,
         },
         cmp::PartialOrd};
 
 #[derive(Debug, Clone)]
-struct ExtrapolationError;
+pub struct ExtrapolationError;
 
 impl fmt::Display for ExtrapolationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -29,7 +30,7 @@ pub enum Interpolation {
 }
 
 
-pub struct OneDLookup <T: PartialOrd + Sub + Add, U: PartialOrd + Add + Sub + Mul>{
+pub struct OneDLookup <T: PartialOrd + Sub + Add + Copy + Clone, U: PartialOrd + Add + Sub + Mul + Copy + Clone>{
     breakpoints: Vec<T>,
     values: Vec<U>,
     last_diff_bp: T,
@@ -39,8 +40,8 @@ pub struct OneDLookup <T: PartialOrd + Sub + Add, U: PartialOrd + Add + Sub + Mu
 }
 
 
-impl<T: PartialOrd + Sub + Add, U: PartialOrd + Sub + Add + Mul> OneDLookup<T,U>{
-    pub fn lookup(&self, breakpoint: &T, extrapolation: Option<Extrapolation>, interpolation: Option<Interpolation>)-> Result<&U, ExtrapolationError> {
+impl<T: PartialOrd + Sub + Add + Div<Output = f64> + Copy + Clone, U: PartialOrd + Sub + Add<Output = U> + Mul + Copy + Clone> OneDLookup<T,U> where for<'t> &'t T: Sub<&'t T, Output = T>, for<'a> &'a U: Sub<&'a U, Output = U> + Add<&'a U, Output = U>, f64: Mul<U, Output = U>{
+    pub fn lookup(&self, breakpoint: &T, extrapolation: Option<Extrapolation>, interpolation: Option<Interpolation>)-> Result<U, ExtrapolationError> {
         //error handle the interpolation and extrapolation method
         let extrapolation_method = extrapolation.unwrap_or(Extrapolation::NoneError);
         let interpolation_method = interpolation.unwrap_or(Interpolation::Linear);
@@ -50,22 +51,22 @@ impl<T: PartialOrd + Sub + Add, U: PartialOrd + Sub + Add + Mul> OneDLookup<T,U>
             None => match extrapolation_method {
             //  handle extrapolation at the high end
                 Extrapolation::NoneError => Err(ExtrapolationError),
-                Extrapolation::NoneHoldExtreme => Ok(self.values.last().unwrap()),
+                Extrapolation::NoneHoldExtreme => Ok(*self.values.last().unwrap()),
                 Extrapolation::Linear => {
-                    let extrapolated_diff_bp: &T = breakpoint - self.breakpoints.get(self.breakpoints.len()-2).unwrap();
+                    let extrapolated_diff_bp: T = breakpoint - self.breakpoints.get(self.breakpoints.len()-2).unwrap();
                     let diff_factor: f64 = extrapolated_diff_bp / self.last_diff_bp;
-                    Ok(diff_factor * self.last_diff_values + self.values.get(self.values.len()-2).unwrap())
+                    Ok((diff_factor * self.last_diff_values) + *self.values.get(self.values.len()-2).unwrap())
                 }
             }
             Some(index) => {
                 if index == 0 { 
-                    match extrapolation_method {
+                    return match extrapolation_method {
                         Extrapolation::NoneError => Err(ExtrapolationError),
-                        Extrapolation::NoneHoldExtreme => Ok(self.values.first().unwrap()),
+                        Extrapolation::NoneHoldExtreme => Ok(*self.values.first().unwrap()),
                         Extrapolation::Linear => {
                             let extrapolated_diff_bp = self.breakpoints.get(1).unwrap() - breakpoint;
                             let diff_factor:f64 = extrapolated_diff_bp / self.first_diff_bp;
-                            Ok(diff_factor * self.first_diff_values + self.values.get(1).unwrap());
+                            Ok((diff_factor * self.first_diff_values) + *self.values.get(1).unwrap())
                         }
                     }
                 }
@@ -75,15 +76,15 @@ impl<T: PartialOrd + Sub + Add, U: PartialOrd + Sub + Add + Mul> OneDLookup<T,U>
                         let diff_actual_bp = self.breakpoints.get(index).unwrap() - self.breakpoints.get(index-1).unwrap();
                         let diff_factor:f64 = interpolated_diff_bp / diff_actual_bp;
                         let diff_values = self.values.get(index).unwrap() - self.values.get(index-1).unwrap();
-                        Ok(diff_factor * diff_values + self.values.get(index-1).unwrap())
+                        Ok((diff_factor * diff_values) + *self.values.get(index-1).unwrap())
                     },
-                    Interpolation::NoneCeiling => {Ok(self.values.get(index).unwrap())},
-                    Interpolation::NoneFloor => {Ok(self.values.get(index-1).unwrap())},
+                    Interpolation::NoneCeiling => {Ok(*self.values.get(index).unwrap())},
+                    Interpolation::NoneFloor => {Ok(*self.values.get(index-1).unwrap())},
                     Interpolation::NoneClosest => {
                         let interpolated_diff_bp = breakpoint - self.breakpoints.get(index -1).unwrap();
                         let diff_actual_bp = self.breakpoints.get(index).unwrap() - self.breakpoints.get(index-1).unwrap();
                         let diff_factor:f64 = interpolated_diff_bp / diff_actual_bp;
-                        Ok(self.values.get(index-1+diff_factor.round()).unwrap())
+                        Ok(*self.values.get(index-1 + diff_factor.round() as usize).unwrap())
                     },
                 }
             }
@@ -92,12 +93,12 @@ impl<T: PartialOrd + Sub + Add, U: PartialOrd + Sub + Add + Mul> OneDLookup<T,U>
 
     fn new(breakpoints: Vec<T>, values: Vec<U>) -> OneDLookup<T,U> {
         OneDLookup {
-            breakpoints: breakpoints,
-            values: values,
             last_diff_bp: breakpoints.last().unwrap() - breakpoints.get(breakpoints.len()-2).unwrap(),
             last_diff_values: values.last().unwrap() - values.get(values.len()-2).unwrap(),
             first_diff_bp: breakpoints.get(1).unwrap() - breakpoints.first().unwrap(),
-            first_diff_values: values.get(1).unwrap() - values.first().unwrap();
+            first_diff_values: values.get(1).unwrap() - values.first().unwrap(),
+            breakpoints: breakpoints,
+            values: values,
         }
     }
 }
