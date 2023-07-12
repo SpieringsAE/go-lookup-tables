@@ -131,11 +131,11 @@ mod tests {
         let result2 = lookup_table.lookup(&6000u16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         println!("sensor is an automotive 1 - 5V 0 - 500 bar pressure sensor");
         println!("linear extrapolation and interpolation enabled");
-        println!("Result at 3V is : {}bar", result);
+        println!("Result at 3V is :    {}bar", result);
         assert_eq!(result, 250f64);
         println!("Result at 0.5V is:   {}bar", result1);
         assert_eq!(result1, -62.5f64);
-        println!("Result at 6V is:    {}bar", result2);
+        println!("Result at 6V is:     {}bar", result2);
         assert_eq!(result2, 625f64);
     }
 }
