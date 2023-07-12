@@ -91,7 +91,7 @@ impl<T: PartialOrd + Sub + Add + Copy + Clone, U: Sub + Add<Output = U> + Copy +
             last_diff_bp: f64::from(*breakpoints.last().unwrap() - *breakpoints.get(breakpoints.len()-2).unwrap()),
             last_diff_values: f64::from(*values.last().unwrap() - *values.get(values.len()-2).unwrap()),
             first_diff_bp: f64::from(*breakpoints.get(1).unwrap() - *breakpoints.first().unwrap()),
-            first_diff_values: f64::from(*values.get(1).unwrap() - *values.first().unwrap()),
+            first_diff_values: f64::from(*values.first().unwrap() - *values.get(1).unwrap()),
             breakpoints: breakpoints,
             values: values,
         }
@@ -109,9 +109,33 @@ mod tests {
     use super::OneDLookup;
 
     #[test]
-    fn it_works() {
-        let lookup_table = OneDLookup::new(vec![0u16,500,4500,5000], vec![0f64,0.0,500.0,500.0]);
-        let result = lookup_table.lookup(&2500u16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear);
-        println!("Result is: {}", result.unwrap());
+    fn linear_extrapolation_signed() {
+        let lookup_table = OneDLookup::new(vec![0i16,5000], vec![0f64,500.0]);
+        let result = lookup_table.lookup(&2500i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
+        let result1 = lookup_table.lookup(&-1000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
+        let result2 = lookup_table.lookup(&6000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
+        println!("sensor is an automotive 0 - 5V 0 - 500 bar pressure sensor");
+        println!("linear extrapolation and interpolation enabled");
+        println!("Result at 2.5V is : {}bar", result);
+        assert_eq!(result, 250f64);
+        println!("Result at -1V is:   {}bar", result1);
+        assert_eq!(result1, -100f64);
+        println!("Result at 6V is:    {}bar", result2);
+        assert_eq!(result2, 600f64);
+    }
+    #[test]
+    fn linear_extrapolation_unsigned() {
+        let lookup_table = OneDLookup::new(vec![1000u16,5000], vec![0f64,500.0]);
+        let result = lookup_table.lookup(&3000u16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
+        let result1 = lookup_table.lookup(&500u16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
+        let result2 = lookup_table.lookup(&6000u16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
+        println!("sensor is an automotive 1 - 5V 0 - 500 bar pressure sensor");
+        println!("linear extrapolation and interpolation enabled");
+        println!("Result at 3V is : {}bar", result);
+        assert_eq!(result, 250f64);
+        println!("Result at 0.5V is:   {}bar", result1);
+        assert_eq!(result1, -62.5f64);
+        println!("Result at 6V is:    {}bar", result2);
+        assert_eq!(result2, 625f64);
     }
 }
