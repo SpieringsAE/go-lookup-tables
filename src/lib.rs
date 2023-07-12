@@ -41,14 +41,10 @@ pub struct OneDLookup <T: PartialOrd + Sub + Add + Copy + Clone, U: PartialOrd +
 
 
 impl<T: PartialOrd + Sub + Add + Div<Output = f64> + Copy + Clone, U: PartialOrd + Sub + Add<Output = U> + Mul + Copy + Clone> OneDLookup<T,U> where for<'t> &'t T: Sub<&'t T, Output = T>, for<'a> &'a U: Sub<&'a U, Output = U> + Add<&'a U, Output = U>, f64: Mul<U, Output = U>{
-    pub fn lookup(&self, breakpoint: &T, extrapolation: Option<Extrapolation>, interpolation: Option<Interpolation>)-> Result<U, ExtrapolationError> {
-        //error handle the interpolation and extrapolation method
-        let extrapolation_method = extrapolation.unwrap_or(Extrapolation::NoneError);
-        let interpolation_method = interpolation.unwrap_or(Interpolation::Linear);
-        //find a correct index or extrapolation at the high end
+    pub fn lookup(&self, breakpoint: &T, extrapolation: Extrapolation, interpolation: Interpolation)-> Result<U, ExtrapolationError> {
         let high_index_opt = self.breakpoints.iter().position(|bp| bp > &breakpoint);
         match high_index_opt { 
-            None => match extrapolation_method {
+            None => match extrapolation {
             //  handle extrapolation at the high end
                 Extrapolation::NoneError => Err(ExtrapolationError),
                 Extrapolation::NoneHoldExtreme => Ok(*self.values.last().unwrap()),
@@ -60,7 +56,7 @@ impl<T: PartialOrd + Sub + Add + Div<Output = f64> + Copy + Clone, U: PartialOrd
             }
             Some(index) => {
                 if index == 0 { 
-                    return match extrapolation_method {
+                    return match extrapolation {
                         Extrapolation::NoneError => Err(ExtrapolationError),
                         Extrapolation::NoneHoldExtreme => Ok(*self.values.first().unwrap()),
                         Extrapolation::Linear => {
@@ -70,7 +66,7 @@ impl<T: PartialOrd + Sub + Add + Div<Output = f64> + Copy + Clone, U: PartialOrd
                         }
                     }
                 }
-                match interpolation_method {
+                match interpolation {
                     Interpolation::Linear => {
                         let interpolated_diff_bp = breakpoint - self.breakpoints.get(index -1).unwrap();
                         let diff_actual_bp = self.breakpoints.get(index).unwrap() - self.breakpoints.get(index-1).unwrap();
@@ -111,11 +107,12 @@ pub fn add(left: usize, right: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::OneDLookup;
 
     #[test]
     fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+        let lookup_table = OneDLookup::new(vec![0f64,2f64,3f64,4f64,5f64,6f64], vec![0f64,20f64,30f64,40f64,50f64,60f64]);
+        let result = lookup_table.lookup(&1.5f64, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear);
+        assert_eq!(result.unwrap(), 15f64);
     }
 }
