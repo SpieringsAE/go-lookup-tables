@@ -148,13 +148,54 @@ impl<T: PartialOrd + Sub + Add + Copy + Clone, U: Sub + Add<Output = U> + Copy +
     }
 }
 
+/// Returns a lookup table. Only use an ascending breakpoints vector! for example  1,2,3,4 and not 4,3,2,1 or 1,2,3,2 \
+    /// breakpoints and values must have the same length!
+    /// 
+    /// # Arguments
+    /// 
+    /// * `breakpoints` - The breakpoints that act as the index for the values
+    /// * `values` - The values that represent the result from the lookup
+    /// 
+    /// # Panics
+    ///
+    /// `create_1d_lookup!` panics if breakpoints is not in ascending order or if breakpoints.len() != values.len().
+    /// This panic is generated at compile time.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # #[macro_use] extern crate go_lookup_tables; fn main() {
+    /// use::go_lookup_tables::*;
+    /// let lookup_table = create_1d_lookup!((0u16,500,4500,5000), (0f64,0.0,500.0,500.0)); //simple 0.5V to 4.5V pressure sensor
+    /// # }
+    /// ```
+#[macro_export]
+macro_rules! create_1d_lookup {
+    (($($bps:expr),*), ($($vals:expr),*)) => {{
+        const _: () = {
+            if [ $($bps,)* ].len() != [ $($vals,)* ].len() {
+                panic!("lengths of breakpoints and values don't match");
+            }
+
+            let mut i = 1;
+            while i < [ $($bps,)* ].len() {
+                if [ $($bps,)* ][i - 1] > [ $($bps,)* ][i] {
+                    panic!("breakpoints aren't sorted, they should be in ascending order");
+                }
+                i += 1;
+            }
+        };
+        OneDLookup::new(vec![$($bps),+], vec![$($vals),+])
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use super::OneDLookup;
 
     #[test]
     fn linear_extrapolation_signed() {
-        let lookup_table = OneDLookup::new(vec![0i16,5000], vec![0f64,500.0]);
+        let lookup_table = create_1d_lookup!((0i16,5000),(0f64,500.0));
         let result = lookup_table.lookup(&2500i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         let result1 = lookup_table.lookup(&-1000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         let result2 = lookup_table.lookup(&6000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
@@ -169,7 +210,7 @@ mod tests {
     }
     #[test]
     fn linear_extrapolation_unsigned() {
-        let lookup_table = OneDLookup::new(vec![1000u16,5000], vec![0f64,500.0]);
+        let lookup_table = create_1d_lookup!((1000u16,5000),(0f64,500.0));
         let result = lookup_table.lookup(&3000u16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         let result1 = lookup_table.lookup(&500u16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         let result2 = lookup_table.lookup(&6000u16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
