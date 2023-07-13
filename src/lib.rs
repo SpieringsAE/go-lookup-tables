@@ -38,7 +38,9 @@ pub enum Interpolation {
 }
 
 /// A struct representing a 1-D lookup table, breakpoints must be an ascending vector! 1,2,3,4 and not 4,3,2,1 or 1,2,3,2
-pub struct OneDLookup <T: PartialOrd + Sub + Add + Copy + Clone, U: Add + Sub + Copy + Clone>{
+pub struct OneDLookup <
+T: PartialOrd + Sub + Add + Copy + Clone,
+U: Add + Sub + Copy + Clone>{
     /// The breakpoints that act as the index for the values.
     breakpoints: Vec<T>,
     /// The values that represent the result from the lookup.
@@ -58,7 +60,12 @@ pub struct OneDLookup <T: PartialOrd + Sub + Add + Copy + Clone, U: Add + Sub + 
 }
 
 
-impl<T: PartialOrd + Sub + Add + Copy + Clone, U: Sub + Add<Output = U> + Copy + Clone> OneDLookup<T,U> where T: Sub<T, Output = T>, U: Sub<U, Output = U> + Add<U, Output = U> + From<f64>, f64: From<T>, f64: From<U>{
+impl<
+T: PartialOrd + Add + Copy + Clone + Sub<Output = T>, 
+U: Sub<Output = U>  + Add<Output = U> + Copy + Clone + From<f64>
+>
+OneDLookup<T,U>
+where f64: From<T> + From<U>{
     /// Returns a (interpolated) value from the lookup table that matches the entered breakpoint.
     /// 
     /// # Arguments
@@ -75,7 +82,8 @@ impl<T: PartialOrd + Sub + Add + Copy + Clone, U: Sub + Add<Output = U> + Copy +
     /// let lookup_table = OneDLookup::new(vec![0u16,500,4500,5000], vec![0f64,0.0,500.0,500.0]); //simple 0.5V to 4.5V pressure sensor
     /// let pressure = lookup_table.lookup(&measured_voltage, Extrapolation::NoneHoldExtreme, Interpolation::Linear).unwrap();
     /// ```
-    pub fn lookup<Y: Copy>(&self, breakpoint: &Y, extrapolation: Extrapolation, interpolation: Interpolation) -> Result<U, ExtrapolationError>  where T: From<Y> {
+    pub fn lookup<Y: Copy>(&self, breakpoint: &Y, extrapolation: Extrapolation, interpolation: Interpolation) -> Result<U, ExtrapolationError>
+    where T: From<Y> {
         let calc_breakpoint = T::from(*breakpoint);
         match self.breakpoints.iter().position(|bp| bp > &calc_breakpoint){ 
             Some(index) => {
@@ -122,6 +130,7 @@ impl<T: PartialOrd + Sub + Add + Copy + Clone, U: Sub + Add<Output = U> + Copy +
             }
         }
     }
+    /// This method is unsafe, consider using the create_1d_lookup!() macro instead.
     /// Returns a lookup table. Only use an ascending breakpoints vector! for example  1,2,3,4 and not 4,3,2,1 or 1,2,3,2 \
     /// breakpoints and values must have the same length!
     /// 
@@ -149,26 +158,26 @@ impl<T: PartialOrd + Sub + Add + Copy + Clone, U: Sub + Add<Output = U> + Copy +
 }
 
 /// Returns a lookup table. Only use an ascending breakpoints vector! for example  1,2,3,4 and not 4,3,2,1 or 1,2,3,2 \
-    /// breakpoints and values must have the same length!
-    /// 
-    /// # Arguments
-    /// 
-    /// * `breakpoints` - The breakpoints that act as the index for the values
-    /// * `values` - The values that represent the result from the lookup
-    /// 
-    /// # Panics
-    ///
-    /// `create_1d_lookup!` panics if breakpoints is not in ascending order or if breakpoints.len() != values.len().
-    /// This panic is generated at compile time.
-    /// 
-    /// # Examples
-    /// 
-    /// ```
-    /// # #[macro_use] extern crate go_lookup_tables; fn main() {
-    /// use::go_lookup_tables::*;
-    /// let lookup_table = create_1d_lookup!((0u16,500,4500,5000), (0f64,0.0,500.0,500.0)); //simple 0.5V to 4.5V pressure sensor
-    /// # }
-    /// ```
+/// breakpoints and values must have the same length!
+/// 
+/// # Arguments
+/// 
+/// * `breakpoints` - The breakpoints that act as the index for the values
+/// * `values` - The values that represent the result from the lookup
+/// 
+/// # Panics
+///
+/// `create_1d_lookup!` panics if breakpoints is not in ascending order or if breakpoints.len() != values.len().
+/// This panic is generated at compile time.
+/// 
+/// # Examples
+/// 
+/// ```
+/// # #[macro_use] extern crate go_lookup_tables; fn main() {
+/// use::go_lookup_tables::*;
+/// let lookup_table = create_1d_lookup!((0u16,500,4500,5000), (0f64,0.0,500.0,500.0)); //simple 0.5V to 4.5V pressure sensor
+/// # }
+/// ```
 #[macro_export]
 macro_rules! create_1d_lookup {
     (($($bps:expr),*), ($($vals:expr),*)) => {{
