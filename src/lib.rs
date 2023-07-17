@@ -2,6 +2,9 @@ use std::{fmt,
         ops::{
             Add,
             Sub,
+            Mul,
+            Div,
+            Neg,
         },
         cmp::PartialOrd};
 
@@ -47,22 +50,22 @@ U: Add + Sub + Copy + Clone>{
     values: Vec<U>,
     /// constant value for the lookup table so it only has to be calculated at initialisation, instead of every function call.\
     /// represents the delta between the last two breakpoints
-    last_diff_bp: f64,
+    last_diff_bp: T,
     /// constant value for the lookup table so it only has to be calculated at initialisation, instead of every function call.\
     /// represents the delta between the last two values
-    last_diff_values: f64,
+    last_diff_values: U,
     /// constant value for the lookup table so it only has to be calculated at initialisation, instead of every function call.\
     /// represents the delta between the first two breakpoints
-    first_diff_bp: f64,
+    first_diff_bp: T,
     /// constant value for the lookup table so it only has to be calculated at initialisation, instead of every function call.\
     /// represents the delta between the first two values
-    first_diff_values: f64,
+    first_diff_values: U,
 }
 
 
 impl<
-T: PartialOrd + Add + Copy + Clone + Sub<Output = T>, 
-U: Sub<Output = U>  + Add<Output = U> + Copy + Clone + From<f64>
+T: PartialOrd + Add + Copy + Clone + Sub<Output = T> + Div<Output = T>, 
+U: Sub<Output = U>  + Add<Output = U> + Copy + Clone + From<T> + Mul<Output = U> + Div<Output = U> + Neg<Output = U>
 >
 OneDLookup<T,U>
 where f64: From<T> + From<U>{
@@ -78,12 +81,12 @@ where f64: From<T> + From<U>{
     /// 
     /// ```
     /// use::go_lookup_tables::{OneDLookup, Interpolation, Extrapolation};
-    /// let measured_voltage = 2000u16;
-    /// let lookup_table = OneDLookup::new(vec![0u16,500,4500,5000], vec![0f64,0.0,500.0,500.0]); //simple 0.5V to 4.5V pressure sensor
+    /// let measured_voltage = 2000i16;
+    /// let lookup_table = OneDLookup::new(vec![0i16,500,4500,5000], vec![0f32,0.0,500.0,500.0]); //simple 0.5V to 4.5V pressure sensor
     /// let pressure = lookup_table.lookup(&measured_voltage, Extrapolation::NoneHoldExtreme, Interpolation::Linear).unwrap();
     /// ```
     pub fn lookup<Y: Copy>(&self, breakpoint: &Y, extrapolation: Extrapolation, interpolation: Interpolation) -> Result<U, ExtrapolationError>
-    where T: From<Y> {
+    where T: From<Y> + From<i8>{
         let calc_breakpoint = T::from(*breakpoint);
         match self.breakpoints.iter().position(|bp| bp > &calc_breakpoint){ 
             Some(index) => {
@@ -93,17 +96,22 @@ where f64: From<T> + From<U>{
                         Interpolation::Linear => {
                             let interpolated_diff_bp = calc_breakpoint - *self.breakpoints.get(index -1).unwrap();
                             let diff_actual_bp = *self.breakpoints.get(index).unwrap() - *self.breakpoints.get(index-1).unwrap();
-                            let diff_factor:f64 = f64::from(interpolated_diff_bp) / f64::from(diff_actual_bp);
                             let diff_values = *self.values.get(index).unwrap() - *self.values.get(index-1).unwrap();
-                            Ok(U::from(diff_factor * f64::from(diff_values)) + *self.values.get(index-1).unwrap())
+                            Ok((U::from(interpolated_diff_bp) * diff_values) / U::from(diff_actual_bp) + *self.values.get(index-1).unwrap())
                         },
                         Interpolation::NoneCeiling => {Ok(*self.values.get(index).unwrap())},
                         Interpolation::NoneFloor => {Ok(*self.values.get(index-1).unwrap())},
                         Interpolation::NoneClosest => {
                             let interpolated_diff_bp = calc_breakpoint - *self.breakpoints.get(index -1).unwrap();
                             let diff_actual_bp = *self.breakpoints.get(index).unwrap() - *self.breakpoints.get(index-1).unwrap();
-                            let diff_factor:f64 = f64::from(interpolated_diff_bp) / f64::from(diff_actual_bp);
-                            Ok(*self.values.get(index-1 + diff_factor.round() as usize).unwrap())
+                            let diff_factor = diff_actual_bp - interpolated_diff_bp;
+                            let round: usize = if diff_factor > (diff_actual_bp/T::from(2i8))
+                                {
+                                0
+                            } else {
+                                1
+                            };
+                            Ok(*self.values.get(index-1 + round).unwrap())
                         },
                     }
                 }
@@ -113,8 +121,7 @@ where f64: From<T> + From<U>{
                     Extrapolation::NoneHoldExtreme => Ok(*self.values.first().unwrap()),
                     Extrapolation::Linear => {
                         let extrapolated_diff_bp = *self.breakpoints.get(1).unwrap() - calc_breakpoint;
-                        let diff_factor = f64::from(extrapolated_diff_bp) / self.first_diff_bp;
-                        Ok(U::from(diff_factor * self.first_diff_values) + *self.values.get(1).unwrap())
+                        Ok((U::from(extrapolated_diff_bp) * -self.first_diff_values) / U::from(self.first_diff_bp) + *self.values.get(1).unwrap())
                     }
                 }
             }
@@ -124,8 +131,7 @@ where f64: From<T> + From<U>{
                 Extrapolation::NoneHoldExtreme => Ok(*self.values.last().unwrap()),
                 Extrapolation::Linear => {
                     let extrapolated_diff_bp: T = calc_breakpoint - *self.breakpoints.get(self.breakpoints.len()-2).unwrap();
-                    let diff_factor: f64 = f64::from(extrapolated_diff_bp) / self.last_diff_bp;
-                    Ok(U::from(diff_factor * self.last_diff_values) + *self.values.get(self.values.len()-2).unwrap())
+                    Ok((U::from(extrapolated_diff_bp) * self.last_diff_values) / U::from(self.last_diff_bp) + *self.values.get(self.values.len()-2).unwrap())
                 }
             }
         }
@@ -143,14 +149,14 @@ where f64: From<T> + From<U>{
     /// 
     /// ```
     /// use::go_lookup_tables::{OneDLookup};
-    /// let lookup_table = OneDLookup::new(vec![0u16,500,4500,5000], vec![0f64,0.0,500.0,500.0]); //simple 0.5V to 4.5V pressure sensor
+    /// let lookup_table = OneDLookup::new(vec![0i16,500,4500,5000], vec![0f32,0.0,500.0,500.0]); //simple 0.5V to 4.5V pressure sensor
     /// ```
     pub fn new(breakpoints: Vec<T>, values: Vec<U>) -> OneDLookup<T,U> {
         OneDLookup {
-            last_diff_bp: f64::from(*breakpoints.last().unwrap() - *breakpoints.get(breakpoints.len()-2).unwrap()),
-            last_diff_values: f64::from(*values.last().unwrap() - *values.get(values.len()-2).unwrap()),
-            first_diff_bp: f64::from(*breakpoints.get(1).unwrap() - *breakpoints.first().unwrap()),
-            first_diff_values: f64::from(*values.first().unwrap() - *values.get(1).unwrap()),
+            last_diff_bp: *breakpoints.last().unwrap() - *breakpoints.get(breakpoints.len()-2).unwrap(),
+            last_diff_values: *values.last().unwrap() - *values.get(values.len()-2).unwrap(),
+            first_diff_bp: *breakpoints.get(1).unwrap() - *breakpoints.first().unwrap(),
+            first_diff_values: *values.get(1).unwrap() - *values.first().unwrap(),
             breakpoints: breakpoints,
             values: values,
         }
@@ -204,25 +210,25 @@ mod tests {
 
     #[test]
     fn linear_extrapolation_signed() {
-        let lookup_table = create_1d_lookup!((0i16,5000),(0f64,500.0));
+        let lookup_table = create_1d_lookup!((0i16,5000),(0f32,500.0));
         let result = lookup_table.lookup(&2500i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         let result1 = lookup_table.lookup(&-1000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         let result2 = lookup_table.lookup(&6000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         println!("sensor is an automotive 0 - 5V 0 - 500 bar pressure sensor");
         println!("linear extrapolation and interpolation enabled");
         println!("Result at 2.5V is : {}bar", result);
-        assert_eq!(result, 250f64);
+        assert_eq!(result, 250f32);
         println!("Result at -1V is:   {}bar", result1);
-        assert_eq!(result1, -100f64);
+        assert_eq!(result1, -100f32);
         println!("Result at 6V is:    {}bar", result2);
-        assert_eq!(result2, 600f64);
+        assert_eq!(result2, 600f32);
     }
     #[test]
     fn linear_extrapolation_unsigned() {
-        let lookup_table = create_1d_lookup!((1000u16,5000),(0f64,500.0));
-        let result = lookup_table.lookup(&3000u16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
-        let result1 = lookup_table.lookup(&500u16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
-        let result2 = lookup_table.lookup(&6000u16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
+        let lookup_table = create_1d_lookup!((1000i16,5000),(0f64,500.0));
+        let result = lookup_table.lookup(&3000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
+        let result1 = lookup_table.lookup(&500i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
+        let result2 = lookup_table.lookup(&6000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         println!("sensor is an automotive 1 - 5V 0 - 500 bar pressure sensor");
         println!("linear extrapolation and interpolation enabled");
         println!("Result at 3V is :    {}bar", result);
@@ -231,5 +237,16 @@ mod tests {
         assert_eq!(result1, -62.5f64);
         println!("Result at 6V is:     {}bar", result2);
         assert_eq!(result2, 625f64);
+    }
+
+    #[test]
+    fn interpolation_closest() {
+        let lookup_table = create_1d_lookup!((0i8,1,5,6),(0i8,1,6,8));
+        let result = lookup_table.lookup(&3i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
+        let result1 = lookup_table.lookup(&4i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
+        let result2 = lookup_table.lookup(&2i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
+        assert_eq!(result, 6i8); //value is 3.5, round up to 6
+        assert_eq!(result1, 6i8); //value is 4.75, round up to 6
+        assert_eq!(result2, 1i8); //value is 2.25, round down to 1
     }
 }
