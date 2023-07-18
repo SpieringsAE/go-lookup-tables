@@ -107,7 +107,7 @@ where f64: From<T> + From<U>{
                             let interpolated_diff_bp = calc_breakpoint - *self.breakpoints.get(index -1).unwrap();
                             let diff_actual_bp = *self.breakpoints.get(index).unwrap() - *self.breakpoints.get(index-1).unwrap();
                             let diff_factor = diff_actual_bp - interpolated_diff_bp;
-                            let round: usize = if diff_factor > (diff_actual_bp/T::from(2i8))
+                            let round: usize = if diff_factor > (diff_actual_bp/T::from(2))
                                 {
                                 0
                             } else {
@@ -183,7 +183,7 @@ where f64: From<T> + From<U>{
 /// ```
 /// # #[macro_use] extern crate go_lookup_tables; fn main() {
 /// use::go_lookup_tables::*;
-/// let lookup_table = create_1d_lookup!((0u16,500,4500,5000), (0f64,0.0,500.0,500.0)); //simple 0.5V to 4.5V pressure sensor
+/// let lookup_table = create_1d_lookup!((0u16,500,4500,5000), (0f32,0.0,500.0,500.0)); //simple 0.5V to 4.5V pressure sensor
 /// # }
 /// ```
 #[macro_export]
@@ -227,18 +227,18 @@ mod tests {
     }
     #[test]
     fn linear_extrapolation_unsigned() {
-        let lookup_table = create_1d_lookup!((1000i16,5000),(0f64,500.0));
+        let lookup_table = create_1d_lookup!((1000i16,5000),(0f32,500.0));
         let result = lookup_table.lookup(&3000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         let result1 = lookup_table.lookup(&500i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         let result2 = lookup_table.lookup(&6000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         println!("sensor is an automotive 1 - 5V 0 - 500 bar pressure sensor");
         println!("linear extrapolation and interpolation enabled");
         println!("Result at 3V is :    {}bar", result);
-        assert_eq!(result, 250f64);
+        assert_eq!(result, 250f32);
         println!("Result at 0.5V is:   {}bar", result1);
-        assert_eq!(result1, -62.5f64);
+        assert_eq!(result1, -62.5f32);
         println!("Result at 6V is:     {}bar", result2);
-        assert_eq!(result2, 625f64);
+        assert_eq!(result2, 625f32);
     }
 
     #[test]
