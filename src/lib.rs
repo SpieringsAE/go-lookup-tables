@@ -80,10 +80,12 @@ where f64: From<T> + From<U>{
     /// # Examples
     /// 
     /// ```
+    /// # #[macro_use] extern crate go_lookup_tables; fn main() {
     /// use::go_lookup_tables::{OneDLookup, Interpolation, Extrapolation};
     /// let measured_voltage = 2000i16;
-    /// let lookup_table = OneDLookup::new(vec![0i16,500,4500,5000], vec![0f32,0.0,500.0,500.0]); //simple 0.5V to 4.5V pressure sensor
+    /// let lookup_table = create_1d_lookup!((0i16,500,4500,5000), (0f32,0.0,500.0,500.0));//simple 0.5V to 4.5V pressure sensor
     /// let pressure = lookup_table.lookup(&measured_voltage, Extrapolation::NoneHoldExtreme, Interpolation::Linear).unwrap();
+    /// # }
     /// ```
     pub fn lookup<Y: Copy>(&self, breakpoint: &Y, extrapolation: Extrapolation, interpolation: Interpolation) -> Result<U, ExtrapolationError>
     where T: From<Y> + From<i8>{
