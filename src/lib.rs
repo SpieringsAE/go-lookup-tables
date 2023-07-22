@@ -43,11 +43,12 @@ pub enum Interpolation {
 /// A struct representing a 1-D lookup table, breakpoints must be an ascending vector! 1,2,3,4 and not 4,3,2,1 or 1,2,3,2
 pub struct OneDLookup <
 T: PartialOrd + Sub + Add + Copy + Clone,
-U: Add + Sub + Copy + Clone>{
+U: Add + Sub + Copy + Clone,
+const C: usize>{
     /// The breakpoints that act as the index for the values.
-    breakpoints: Vec<T>,
+    breakpoints: [T;C],
     /// The values that represent the result from the lookup.
-    values: Vec<U>,
+    values: [U;C],
     /// constant value for the lookup table so it only has to be calculated at initialisation, instead of every function call.\
     /// represents the delta between the last two breakpoints
     last_diff_bp: T,
@@ -65,9 +66,10 @@ U: Add + Sub + Copy + Clone>{
 
 impl<
 T: PartialOrd + Add + Copy + Clone + Sub<Output = T> + Div<Output = T>, 
-U: Sub<Output = U>  + Add<Output = U> + Copy + Clone + From<T> + Mul<Output = U> + Div<Output = U> + Neg<Output = U>
+U: Sub<Output = U>  + Add<Output = U> + Copy + Clone + From<T> + Mul<Output = U> + Div<Output = U> + Neg<Output = U>,
+const C: usize
 >
-OneDLookup<T,U>
+OneDLookup<T,U,C>
 where f64: From<T> + From<U>{
     /// Returns a (interpolated) value from the lookup table that matches the entered breakpoint.
     /// 
@@ -154,16 +156,16 @@ where f64: From<T> + From<U>{
     /// 
     /// ```
     /// use::go_lookup_tables::{OneDLookup};
-    /// let lookup_table = OneDLookup::new(vec![0i16,500,4500,5000], vec![0f32,0.0,500.0,500.0]); //simple 0.5V to 4.5V pressure sensor
+    /// let lookup_table = OneDLookup::new([0i16,500,4500,5000], [0f32,0.0,500.0,500.0], 500i16, 0f32, -500i16, 0f32); //simple 0.5V to 4.5V pressure sensor
     /// ```
-    pub fn new(breakpoints: Vec<T>, values: Vec<U>) -> OneDLookup<T,U> {
+    pub const fn new(breakpoints: [T;C], values: [U;C], last_diff_bp: T, last_diff_values: U, first_diff_bp: T, first_diff_values: U) -> OneDLookup<T,U,C> where [T;C]: Sized, [U;C]: Sized {
         OneDLookup {
-            last_diff_bp: *breakpoints.last().unwrap() - *breakpoints.get(breakpoints.len()-2).unwrap(),
-            last_diff_values: *values.last().unwrap() - *values.get(values.len()-2).unwrap(),
-            first_diff_bp: *breakpoints.get(1).unwrap() - *breakpoints.first().unwrap(),
-            first_diff_values: *values.get(1).unwrap() - *values.first().unwrap(),
-            breakpoints: breakpoints,
-            values: values,
+            last_diff_bp,
+            last_diff_values,
+            first_diff_bp,
+            first_diff_values,
+            breakpoints,
+            values,
         }
     }
 }
@@ -205,7 +207,13 @@ macro_rules! create_1d_lookup {
                 i += 1;
             }
         };
-        OneDLookup::new(vec![$($bps),+], vec![$($vals),+])
+        OneDLookup::new([$($bps),+],
+        [$($vals),+],
+        [ $($bps,)* ][[ $($bps,)* ].len()-1] - [ $($bps,)* ][[ $($bps,)* ].len()-2],
+        [ $($vals,)* ][[ $($vals,)* ].len()-1] - [ $($vals,)* ][[ $($vals,)* ].len()-2],
+        [ $($bps,)* ][1] - [ $($bps,)* ][0],
+        [ $($vals,)* ][1] - [ $($vals,)* ][0],
+        )
     }};
 }
 
@@ -215,28 +223,28 @@ mod tests {
 
     #[test]
     fn extrapolation_linear() {
-        let lookup_table = create_1d_lookup!((0i16,5000),(0f32,500.0));
-        let result1 = lookup_table.lookup(&-1000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
-        let result2 = lookup_table.lookup(&6000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
+        const LOOKUP_TABLE: OneDLookup<i16, f32, 2> = create_1d_lookup!((0i16,5000),(0f32,500.0));
+        let result1 = LOOKUP_TABLE.lookup(&-1000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
+        let result2 = LOOKUP_TABLE.lookup(&6000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
         assert_eq!(result1, -100f32);
         assert_eq!(result2, 600f32);
     }
 
     #[test]
     fn extrapolation_none_hold() {
-        let lookup_table = create_1d_lookup!((0i16,5000),(0f32,500.0));
-        let result1 = lookup_table.lookup(&-1000i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
-        let result2 = lookup_table.lookup(&6000i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
+        const LOOKUP_TABLE: OneDLookup<i16, f32, 2> = create_1d_lookup!((0i16,5000),(0f32,500.0));
+        let result1 = LOOKUP_TABLE.lookup(&-1000i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
+        let result2 = LOOKUP_TABLE.lookup(&6000i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
         assert_eq!(result1, 0f32);
         assert_eq!(result2, 500f32);
     }
 
     #[test]
     fn extrapolation_none_error() {
-        let lookup_table = create_1d_lookup!((0i16,5000),(0f32,500.0));
-        let result1 = lookup_table.lookup(&-1000i16, crate::Extrapolation::NoneError, crate::Interpolation::Linear);
-        let result2 = lookup_table.lookup(&6000i16, crate::Extrapolation::NoneError, crate::Interpolation::Linear);
-        let result3 = lookup_table.lookup(&2500i16, crate::Extrapolation::NoneError, crate::Interpolation::Linear);
+        const LOOKUP_TABLE: OneDLookup<i16, f32, 2> = create_1d_lookup!((0i16,5000),(0f32,500.0));
+        let result1 = LOOKUP_TABLE.lookup(&-1000i16, crate::Extrapolation::NoneError, crate::Interpolation::Linear);
+        let result2 = LOOKUP_TABLE.lookup(&6000i16, crate::Extrapolation::NoneError, crate::Interpolation::Linear);
+        let result3 = LOOKUP_TABLE.lookup(&2500i16, crate::Extrapolation::NoneError, crate::Interpolation::Linear);
         assert!(result1.is_err());
         assert!(result2.is_err());
         assert!(result3.is_ok());
@@ -244,11 +252,11 @@ mod tests {
 
     #[test]
     fn interpolation_linear() {
-        let lookup_table = create_1d_lookup!((0i16,500,4500,5000), (0i32,0,500,500));
-        let result = lookup_table.lookup(&500i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
-        let result1 = lookup_table.lookup(&505i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
-        let result2 = lookup_table.lookup(&4495i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
-        let result3 = lookup_table.lookup(&2500i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
+        const LOOKUP_TABLE: OneDLookup<i16, i32, 4> = create_1d_lookup!((0i16,500,4500,5000), (0i32,0,500,500));
+        let result = LOOKUP_TABLE.lookup(&500i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
+        let result1 = LOOKUP_TABLE.lookup(&505i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
+        let result2 = LOOKUP_TABLE.lookup(&4495i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
+        let result3 = LOOKUP_TABLE.lookup(&2500i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
         assert_eq!(result, 0i32);
         assert_eq!(result1, 0i32);
         assert_eq!(result2, 499i32);
@@ -257,10 +265,10 @@ mod tests {
 
     #[test]
     fn interpolation_closest() {
-        let lookup_table = create_1d_lookup!((0i8,1,5,6),(0i8,1,6,8));
-        let result = lookup_table.lookup(&3i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
-        let result1 = lookup_table.lookup(&4i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
-        let result2 = lookup_table.lookup(&2i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
+        const LOOKUP_TABLE: OneDLookup<i8, i8, 4> = create_1d_lookup!((0i8,1,5,6),(0i8,1,6,8));
+        let result = LOOKUP_TABLE.lookup(&3i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
+        let result1 = LOOKUP_TABLE.lookup(&4i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
+        let result2 = LOOKUP_TABLE.lookup(&2i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
         assert_eq!(result, 6i8); //value is 3.5, round up to 6
         assert_eq!(result1, 6i8); //value is 4.75, round up to 6
         assert_eq!(result2, 1i8); //value is 2.25, round down to 1
@@ -268,18 +276,18 @@ mod tests {
 
     #[test]
     fn interpolation_floor() {
-        let lookup_table = create_1d_lookup!((0i8,2,5,6),(0i8,1,6,8));
-        let result = lookup_table.lookup(&0i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneFloor).unwrap();
-        let result1 = lookup_table.lookup(&1i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneFloor).unwrap();
+        const LOOKUP_TABLE: OneDLookup<i8, i8, 4> = create_1d_lookup!((0i8,2,5,6),(0i8,1,6,8));
+        let result = LOOKUP_TABLE.lookup(&0i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneFloor).unwrap();
+        let result1 = LOOKUP_TABLE.lookup(&1i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneFloor).unwrap();
         assert_eq!(result, 0i8);
         assert_eq!(result, result1);
     }
 
     #[test]
     fn interpolation_ceiling() {
-        let lookup_table = create_1d_lookup!((0i8,2,5,6),(0i8,1,6,8));
-        let result = lookup_table.lookup(&3i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneCeiling).unwrap();
-        let result1 = lookup_table.lookup(&4i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneCeiling).unwrap();
+        const LOOKUP_TABLE: OneDLookup<i8, i8, 4> = create_1d_lookup!((0i8,2,5,6),(0i8,1,6,8));
+        let result = LOOKUP_TABLE.lookup(&3i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneCeiling).unwrap();
+        let result1 = LOOKUP_TABLE.lookup(&4i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneCeiling).unwrap();
         assert_eq!(result, 6i8);
         assert_eq!(result, result1);
     }
