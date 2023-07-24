@@ -69,8 +69,7 @@ T: PartialOrd + Add + Copy + Clone + Sub<Output = T> + Div<Output = T>,
 U: Sub<Output = U>  + Add<Output = U> + Copy + Clone + From<T> + Mul<Output = U> + Div<Output = U> + Neg<Output = U>,
 const C: usize
 >
-OneDLookup<T,U,C>
-where f64: From<T> + From<U>{
+OneDLookup<T,U,C>{
     /// Returns a (interpolated) value from the lookup table that matches the entered breakpoint.
     /// 
     /// # Arguments
@@ -166,7 +165,7 @@ where f64: From<T> + From<U>{
             first_diff_values,
             breakpoints,
             values,
-        }
+        }        
     }
 }
 
@@ -204,15 +203,19 @@ macro_rules! create_1d_lookup {
                 if [ $($bps,)* ][i - 1] > [ $($bps,)* ][i] {
                     panic!("breakpoints aren't sorted, they should be in ascending order");
                 }
+                // let bp_diff = [ $($bps,)* ][i] - [ $($bps,)* ][i - 1];
+                // let val_diff = [ $($vals,)* ][i] - [ $($vals,)* ][i - 1];
+                // let val = OneDLookup::to_value(bp_diff) * val_diff;
                 i += 1;
             }
         };
-        OneDLookup::new([$($bps),+],
-        [$($vals),+],
-        [ $($bps,)* ][[ $($bps,)* ].len()-1] - [ $($bps,)* ][[ $($bps,)* ].len()-2],
-        [ $($vals,)* ][[ $($vals,)* ].len()-1] - [ $($vals,)* ][[ $($vals,)* ].len()-2],
-        [ $($bps,)* ][1] - [ $($bps,)* ][0],
-        [ $($vals,)* ][1] - [ $($vals,)* ][0],
+        OneDLookup::new(
+            [$($bps),+],
+            [$($vals),+],
+            [ $($bps,)* ][[ $($bps,)* ].len()-1] - [ $($bps,)* ][[ $($bps,)* ].len()-2],
+            [ $($vals,)* ][[ $($vals,)* ].len()-1] - [ $($vals,)* ][[ $($vals,)* ].len()-2],
+            [ $($bps,)* ][1] - [ $($bps,)* ][0],
+            [ $($vals,)* ][1] - [ $($vals,)* ][0],
         )
     }};
 }
