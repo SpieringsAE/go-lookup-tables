@@ -194,29 +194,37 @@ OneDLookup<T,U,C>{
 macro_rules! create_1d_lookup {
     (($($bps:expr),*), ($($vals:expr),*)) => {{
         const _: () = {
-            if [ $($bps,)* ].len() != [ $($vals,)* ].len() {
+            let breakpoints = [ $($bps,)* ];
+            let values = [ $($vals,)* ];
+            if breakpoints.len() != values.len() {
                 panic!("lengths of breakpoints and values don't match");
             }
 
             let mut i = 1;
-            while i < [ $($bps,)* ].len() {
-                if [ $($bps,)* ][i - 1] > [ $($bps,)* ][i] {
+            while i < breakpoints.len() {
+                if breakpoints[i - 1] > breakpoints[i] {
                     panic!("breakpoints aren't sorted, they should be in ascending order");
                 }
-                // let bp_diff = [ $($bps,)* ][i] - [ $($bps,)* ][i - 1];
-                // let val_diff = [ $($vals,)* ][i] - [ $($vals,)* ][i - 1];
-                // let val = OneDLookup::to_value(bp_diff) * val_diff;
+                // let bp_diff = breakpoints[i] - breakpoints[i - 1];
+                // let val_diff = values[i] - values[i - 1];
+                // let val = test.to_value(bp_diff) * val_diff;
                 i += 1;
             }
         };
-        OneDLookup::new(
+        let lookup = OneDLookup::new(
             [$($bps),+],
             [$($vals),+],
             [ $($bps,)* ][[ $($bps,)* ].len()-1] - [ $($bps,)* ][[ $($bps,)* ].len()-2],
             [ $($vals,)* ][[ $($vals,)* ].len()-1] - [ $($vals,)* ][[ $($vals,)* ].len()-2],
             [ $($bps,)* ][1] - [ $($bps,)* ][0],
             [ $($vals,)* ][1] - [ $($vals,)* ][0],
-        )
+        );
+
+        // let bp_diff = lookup.breakpoints[1] - lookup.breakpoints[0];
+        // let val_diff = lookup.values[1] - lookup.values[0];
+        // bp_diff.into() * val_diff;
+
+        lookup
     }};
 }
 
