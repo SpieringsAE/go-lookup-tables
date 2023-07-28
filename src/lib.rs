@@ -6,7 +6,8 @@ use std::{fmt,
             Div,
             Neg,
         },
-        cmp::PartialOrd};
+        cmp::PartialOrd,
+    convert::Infallible};
 
 #[derive(Debug, Clone)]
 /// Something went wrong with extrapolating, either NoneError was set or the lookuptable is not set up correctly
@@ -42,8 +43,8 @@ pub enum Interpolation {
 
 /// A struct representing a 1-D lookup table, breakpoints must be an ascending vector! 1,2,3,4 and not 4,3,2,1 or 1,2,3,2
 pub struct OneDLookup <
-T: PartialOrd + Sub + Add + Copy + Clone,
-U: Add + Sub + Copy + Clone,
+T: PartialOrd + Sub + Add + Div + Copy + Clone,
+U: Add + Sub + Div + Mul + Copy + Clone,
 const C: usize>{
     /// The breakpoints that act as the index for the values.
     breakpoints: [T;C],
@@ -93,23 +94,23 @@ OneDLookup<T,U,C>{
         let calc_breakpoint = T::from(*breakpoint);
         match self.breakpoints.iter().position(|bp| bp >= &calc_breakpoint){ 
             Some(index) => {
-                if self.breakpoints.get(index).unwrap() == &calc_breakpoint {
-                    return Ok(*self.values.get(index).unwrap()) 
+                if self.breakpoints[index] == calc_breakpoint {
+                    return Ok(self.values[index]) 
                 }
                 else if index != 0 {
                     // handle interpolation
                     return match interpolation {
                         Interpolation::Linear => {
-                            let interpolated_diff_bp = calc_breakpoint - *self.breakpoints.get(index -1).unwrap();
-                            let diff_actual_bp = *self.breakpoints.get(index).unwrap() - *self.breakpoints.get(index-1).unwrap();
-                            let diff_values = *self.values.get(index).unwrap() - *self.values.get(index-1).unwrap();
-                            Ok((U::from(interpolated_diff_bp) * diff_values) / U::from(diff_actual_bp) + *self.values.get(index-1).unwrap())
+                            let interpolated_diff_bp = calc_breakpoint - self.breakpoints[index -1];
+                            let diff_actual_bp = self.breakpoints[index] - self.breakpoints[index-1];
+                            let diff_values = self.values[index] - self.values[index-1];
+                            Ok((U::from(interpolated_diff_bp) * diff_values) / U::from(diff_actual_bp) + self.values[index-1])
                         },
                         Interpolation::NoneCeiling => {Ok(*self.values.get(index).unwrap())},
                         Interpolation::NoneFloor => {Ok(*self.values.get(index-1).unwrap())},
                         Interpolation::NoneClosest => {
-                            let interpolated_diff_bp = calc_breakpoint - *self.breakpoints.get(index -1).unwrap();
-                            let diff_actual_bp = *self.breakpoints.get(index).unwrap() - *self.breakpoints.get(index-1).unwrap();
+                            let interpolated_diff_bp = calc_breakpoint - self.breakpoints[index -1];
+                            let diff_actual_bp = self.breakpoints[index] - self.breakpoints[index-1];
                             let diff_factor = diff_actual_bp - interpolated_diff_bp;
                             let round: usize = if diff_factor > (diff_actual_bp/T::from(2))
                                 {
@@ -117,27 +118,27 @@ OneDLookup<T,U,C>{
                             } else {
                                 1
                             };
-                            Ok(*self.values.get(index-1 + round).unwrap())
+                            Ok(self.values[index-1 + round])
                         },
                     }
                 }
                 // handle extrapolation at the low end
                 match extrapolation {
                     Extrapolation::NoneError => Err(ExtrapolationError),
-                    Extrapolation::NoneHoldExtreme => Ok(*self.values.first().unwrap()),
+                    Extrapolation::NoneHoldExtreme => Ok(self.values[0]),
                     Extrapolation::Linear => {
-                        let extrapolated_diff_bp = *self.breakpoints.get(1).unwrap() - calc_breakpoint;
-                        Ok((U::from(extrapolated_diff_bp) * -self.first_diff_values) / U::from(self.first_diff_bp) + *self.values.get(1).unwrap())
+                        let extrapolated_diff_bp = self.breakpoints[1] - calc_breakpoint;
+                        Ok((U::from(extrapolated_diff_bp) * -self.first_diff_values) / U::from(self.first_diff_bp) + self.values[1])
                     }
                 }
             }
             None => match extrapolation {
             // handle extrapolation at the high end
                 Extrapolation::NoneError => Err(ExtrapolationError),
-                Extrapolation::NoneHoldExtreme => Ok(*self.values.last().unwrap()),
+                Extrapolation::NoneHoldExtreme => Ok(self.values[self.values.len()-1]),
                 Extrapolation::Linear => {
-                    let extrapolated_diff_bp: T = calc_breakpoint - *self.breakpoints.get(self.breakpoints.len()-2).unwrap();
-                    Ok((U::from(extrapolated_diff_bp) * self.last_diff_values) / U::from(self.last_diff_bp) + *self.values.get(self.values.len()-2).unwrap())
+                    let extrapolated_diff_bp: T = calc_breakpoint - self.breakpoints[self.breakpoints.len()-2];
+                    Ok((U::from(extrapolated_diff_bp) * self.last_diff_values) / U::from(self.last_diff_bp) + self.values[self.values.len()-2])
                 }
             }
         }
@@ -226,6 +227,148 @@ macro_rules! create_1d_lookup {
 
         lookup
     }};
+}
+
+pub struct TwoDLookup<
+S: PartialOrd + Sub + Add + Div + Copy + Clone,
+T: PartialOrd + Sub + Add + Div + Copy + Clone,
+U: Add + Sub + Div + Mul + Copy + Clone,
+const N: usize,
+const M: usize>{
+    breakpoints_h: [S;N],
+    breakpoints_v: [T;M],
+    values:        [[U;N];M],
+}
+
+impl<
+S: PartialOrd + Add + Copy + Clone + Sub<Output = S> + Div<Output =S>, 
+T: PartialOrd + Add + Copy + Clone + Sub<Output = T> + Div<Output = T>, 
+U: Sub<Output = U>  + Add<Output = U> + Copy + Clone + From<T> + From<S> + Mul<Output = U> + Div<Output = U> + Neg<Output = U>,
+const N: usize,
+const M: usize,
+>TwoDLookup<S,T,U,N,M> {
+    pub fn lookup<Y: Copy, Z: Copy>(&self, breakpoint_h: &Y, breakpoint_v: &Z, interpolation: Interpolation) -> Result<U, Infallible>
+    where S: From<Y> + From<i8>, T: From<Z> + From<i8>, U: From<i8>{
+        let calc_breakpoint_h = S::from(*breakpoint_h);
+        let calc_breakpoint_v = T::from(*breakpoint_v);
+        //get horizontal index which will be used to generate an intermediary array of values
+        let indexes_h = match self.breakpoints_h.iter().position(|bp| bp >= &calc_breakpoint_h) {
+            Some(index) => {
+                //easy exit if bp matches existing bp
+                if self.breakpoints_h[index] == calc_breakpoint_h {
+                    (index,None)
+                //horizontal interpolation zone
+                } else if index != 0 {
+                    match interpolation {
+                        Interpolation::Linear => {
+                            (index, Some(index -1))
+                        },
+                        Interpolation::NoneCeiling => (index,None),
+                        Interpolation::NoneFloor => (index-1,None),
+                        Interpolation::NoneClosest => {
+                            let interpolated_diff_bp_h = calc_breakpoint_h - self.breakpoints_h[index -1];
+                            let diff_actual_bp_h = self.breakpoints_h[index] - self.breakpoints_h[index-1];
+                            let diff_factor_h = diff_actual_bp_h - interpolated_diff_bp_h;
+                            let round: usize = if diff_factor_h > (diff_actual_bp_h/S::from(2))
+                                {
+                                0
+                            } else {
+                                1
+                            };
+                            (index-1+round,None)
+                        }
+                    }
+                } else {
+                    //low end out of bounds horizontal
+                    (0,None)
+                }
+            },
+            //high end out of bounds horizontal
+            None => (self.breakpoints_h.len()-1,None)
+        };
+        //get the vertical index and calculate the value
+        match self.breakpoints_v.iter().position(|bp| bp >= &calc_breakpoint_v) {
+            Some(index) => {
+                //easy exit if bp matches existing bp
+                if self.breakpoints_v[index] == calc_breakpoint_v {
+                    return match interpolation {
+                        Interpolation::Linear => {
+                            Ok(self.interpolate(indexes_h, (index,None), calc_breakpoint_h, calc_breakpoint_v))
+                        },
+                        Interpolation::NoneCeiling | Interpolation::NoneFloor | Interpolation::NoneClosest => Ok(self.values[index][indexes_h.0]),
+                    };
+                //vertical interpolation zone
+                } else if index != 0 {
+                    return match interpolation {
+                        Interpolation::Linear => {
+                            Ok(self.interpolate(indexes_h, (index,Some(index-1)), calc_breakpoint_h, calc_breakpoint_v))
+                        },
+                        Interpolation::NoneCeiling => Ok(self.values[index][indexes_h.0]),
+                        Interpolation::NoneFloor => Ok(self.values[index-1][indexes_h.0]),
+                        Interpolation::NoneClosest => {
+                            let interpolated_diff_bp_v = calc_breakpoint_v - self.breakpoints_v[index -1];
+                            let diff_actual_bp_v = self.breakpoints_v[index] - self.breakpoints_v[index-1];
+                            let diff_factor_v = diff_actual_bp_v - interpolated_diff_bp_v;
+                            let round: usize = if diff_factor_v > (diff_actual_bp_v/T::from(2))
+                                {
+                                0
+                            } else {
+                                1
+                            };
+                            Ok(self.values[index-1 + round][indexes_h.0])
+                        }
+                    }
+                } else {
+                    //low end out of bounds vertical
+                    return match interpolation {                
+                        Interpolation::Linear => {
+                            Ok(self.interpolate(indexes_h, (0,None), calc_breakpoint_h, calc_breakpoint_v))
+                        },
+                        Interpolation::NoneCeiling | Interpolation::NoneFloor | Interpolation::NoneClosest => Ok(self.values[0][indexes_h.0]),
+                    }
+                }
+            },
+            //high end out of bounds vertical
+            None => {
+                return match interpolation {                
+                    Interpolation::Linear => {
+                        Ok(self.interpolate(indexes_h, (self.breakpoints_v.len()-1,None), calc_breakpoint_h, calc_breakpoint_v))
+                    },
+                    Interpolation::NoneCeiling | Interpolation::NoneFloor | Interpolation::NoneClosest => Ok(self.values[self.values.len()-1][indexes_h.0]),
+                }
+            }
+        }
+    }
+
+    fn interpolate(&self, indexes_h: (usize,Option<usize>), indexes_v: (usize,Option<usize>), breakpoint_h: S, breakpoint_v: T) -> U {
+        let intermediary_values = if indexes_h.1.is_some() && indexes_v.1.is_some() {
+            let interpolated_diff_bp_h = breakpoint_h - self.breakpoints_h[indexes_h.1.unwrap()];
+            let diff_actual_bp_h = self.breakpoints_h[indexes_h.0] - self.breakpoints_h[indexes_h.1.unwrap()];
+            let diff_values_l = self.values[indexes_v.1.unwrap()][indexes_h.0] - self.values[indexes_v.1.unwrap()][indexes_h.1.unwrap()];
+            let diff_values_h = self.values[indexes_v.0][indexes_h.0] - self.values[indexes_v.0][indexes_h.1.unwrap()];
+
+            [
+                (U::from(interpolated_diff_bp_h) * diff_values_l) / U::from(diff_actual_bp_h) + self.values[indexes_v.1.unwrap()][indexes_h.1.unwrap()],
+                (U::from(interpolated_diff_bp_h) * diff_values_h) / U::from(diff_actual_bp_h) + self.values[indexes_v.0][indexes_h.1.unwrap()]
+            ]
+        } else if indexes_h.1.is_none() && indexes_v.1.is_none() {
+            return self.values[indexes_v.0][indexes_h.0]
+        } else if indexes_h.1.is_none() {
+             [
+                self.values[indexes_v.1.unwrap()][indexes_h.0],
+                self.values[indexes_v.0][indexes_h.0]
+            ]
+        } else {
+            let interpolated_diff_bp_h = breakpoint_h - self.breakpoints_h[indexes_h.1.unwrap()];
+            let diff_actual_bp_h = self.breakpoints_h[indexes_h.0] - self.breakpoints_h[indexes_h.1.unwrap()];
+            let diff_values_h = self.values[indexes_v.0][indexes_h.0] - self.values[indexes_v.0][indexes_h.1.unwrap()];
+            return (U::from(interpolated_diff_bp_h) * diff_values_h) / U::from(diff_actual_bp_h) + self.values[indexes_v.0][indexes_h.0]
+        }; 
+        
+        let interpolated_diff_bp_v = breakpoint_v - self.breakpoints_v[indexes_v.1.unwrap()];
+        let diff_actual_bp_v = self.breakpoints_v[indexes_v.0] - self.breakpoints_v[indexes_v.1.unwrap()];
+        (U::from(interpolated_diff_bp_v) + (intermediary_values[1]-intermediary_values[0]))/ U::from(diff_actual_bp_v)+intermediary_values[0]
+    }
 }
 
 #[cfg(test)]
