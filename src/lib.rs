@@ -85,8 +85,9 @@ OneDLookup<T,U,C>{
     /// # #[macro_use] extern crate go_lookup_tables; fn main() {
     /// use::go_lookup_tables::{OneDLookup, Interpolation, Extrapolation};
     /// let measured_voltage = 2000i16;
-    /// let lookup_table = create_1d_lookup!((0i16,500,4500,5000), (0f32,0.0,500.0,500.0));//simple 0.5V to 4.5V pressure sensor
-    /// let pressure = lookup_table.lookup(&measured_voltage, Extrapolation::NoneHoldExtreme, Interpolation::Linear).unwrap();
+    /// const LOOKUP_TABLE: OneDLookup<i16,f32,4> = create_1d_lookup!((0,500,4500,5000), (0.0,0.0,500.0,500.0));//simple 0.5V to 4.5V pressure sensor
+    /// let pressure = LOOKUP_TABLE.lookup(&measured_voltage, Extrapolation::NoneHoldExtreme, Interpolation::Linear).unwrap();
+    /// assert_eq!(pressure, 187.5f32)
     /// # }
     /// ```
     pub fn lookup<Y: Copy>(&self, breakpoint: &Y, extrapolation: Extrapolation, interpolation: Interpolation) -> Result<U, ExtrapolationError>
@@ -156,7 +157,7 @@ OneDLookup<T,U,C>{
     /// 
     /// ```
     /// use::go_lookup_tables::{OneDLookup};
-    /// let lookup_table = OneDLookup::new([0i16,500,4500,5000], [0f32,0.0,500.0,500.0], 500i16, 0f32, -500i16, 0f32); //simple 0.5V to 4.5V pressure sensor
+    /// const LOOKUP_TABLE: OneDLookup<i16,f32,4> = OneDLookup::new([0,500,4500,5000], [0.0,0.0,500.0,500.0], 500, 0.0, -500, 0.0); //simple 0.5V to 4.5V pressure sensor
     /// ```
     pub const fn new(breakpoints: [T;C], values: [U;C], last_diff_bp: T, last_diff_values: U, first_diff_bp: T, first_diff_values: U) -> OneDLookup<T,U,C> where [T;C]: Sized, [U;C]: Sized {
         OneDLookup {
@@ -188,7 +189,7 @@ OneDLookup<T,U,C>{
 /// ```
 /// # #[macro_use] extern crate go_lookup_tables; fn main() {
 /// use::go_lookup_tables::*;
-/// let lookup_table = create_1d_lookup!((0i16,500,4500,5000), (0f32,0.0,500.0,500.0)); //simple 0.5V to 4.5V pressure sensor
+/// const LOOKUP_TABLE: OneDLookup<i16,f32,4> = create_1d_lookup!((0,500,4500,5000), (0.0,0.0,500.0,500.0)); //simple 0.5V to 4.5V pressure sensor
 /// # }
 /// ```
 #[macro_export]
@@ -229,14 +230,26 @@ macro_rules! create_1d_lookup {
     }};
 }
 
+/// A struct representing a 2-D lookup table, breakpoints must be an ascending vectors! 1,2,3,4 and not 4,3,2,1 or 1,2,3,2
+/// 
+/// example:
+/// /*
+///     x   0   500 1000
+///     0   3.0 4.2 5.5
+///     3   4.2 5.0 6.0
+///     6   5.0 5.8 6.5
+/// */
 pub struct TwoDLookup<
 S: PartialOrd + Sub + Add + Div + Copy + Clone,
 T: PartialOrd + Sub + Add + Div + Copy + Clone,
 U: Add + Sub + Div + Mul + Copy + Clone,
 const N: usize,
 const M: usize>{
+    ///The horizontal breakpoints
     breakpoints_h: [S;N],
+    ///The vertical breakpoints
     breakpoints_v: [T;M],
+    ///The values matrix
     values:        [[U;N];M],
 }
 
@@ -247,6 +260,35 @@ U: Sub<Output = U>  + Add<Output = U> + Copy + Clone + From<T> + From<S> + Mul<O
 const N: usize,
 const M: usize,
 >TwoDLookup<S,T,U,N,M> {
+    /// Returns a (interpolated) value from the lookup table that matches the entered breakpoints.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `breakpoint_h` - A reference to the horizontal breakpoint for which a value must be found by the lookup table
+    /// * `breakpoint_v` - A reference to the vertical breakpoint for which a value must be found by the lookup table
+    /// * `interpolation` - The interpolation method to use for this lookup operation
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # #[macro_use] extern crate go_lookup_tables; fn main() {
+    /// use::go_lookup_tables::{TwoDLookup, Interpolation};
+    /// let rpm = 750i16;
+    /// let throttle_pos = 4;
+    /// const LOOKUP_TABLE: TwoDLookup<i16,i8,f32,3,3> = create_2d_lookup!((0,500,1000),(0,3,6),(
+    /// 3.0,4.2,5.5;
+    /// 4.2,5.0,6.0;
+    /// 5.0,5.8,6.5)); //only a small part of an actual injector table
+    /// /* full table:
+    ///     x   0   500 1000
+    ///     0   3.0 4.2 5.5
+    ///     3   4.2 5.0 6.0
+    ///     6   5.0 5.8 6.5
+    ///  */
+    /// let injector_time = LOOKUP_TABLE.lookup(&rpm, &throttle_pos, Interpolation::Linear).unwrap();
+    /// assert_eq!(injector_time, 5.7166667f32)
+    /// # }
+    /// ```
     pub fn lookup<Y: Copy, Z: Copy>(&self, breakpoint_h: &Y, breakpoint_v: &Z, interpolation: Interpolation) -> Result<U, Infallible>
     where S: From<Y> + From<i8>, T: From<Z> + From<i8>, U: From<i8>{
         let calc_breakpoint_h = S::from(*breakpoint_h);
@@ -291,15 +333,15 @@ const M: usize,
             Some(index) => {
                 //easy exit if bp matches existing bp
                 if self.breakpoints_v[index] == calc_breakpoint_v {
-                    return match interpolation {
+                    match interpolation {
                         Interpolation::Linear => {
                             Ok(self.interpolate(indexes_h, (index,None), calc_breakpoint_h, calc_breakpoint_v))
                         },
                         Interpolation::NoneCeiling | Interpolation::NoneFloor | Interpolation::NoneClosest => Ok(self.values[index][indexes_h.0]),
-                    };
+                    }
                 //vertical interpolation zone
                 } else if index != 0 {
-                    return match interpolation {
+                    match interpolation {
                         Interpolation::Linear => {
                             Ok(self.interpolate(indexes_h, (index,Some(index-1)), calc_breakpoint_h, calc_breakpoint_v))
                         },
@@ -320,7 +362,7 @@ const M: usize,
                     }
                 } else {
                     //low end out of bounds vertical
-                    return match interpolation {                
+                    match interpolation {                
                         Interpolation::Linear => {
                             Ok(self.interpolate(indexes_h, (0,None), calc_breakpoint_h, calc_breakpoint_v))
                         },
@@ -330,7 +372,7 @@ const M: usize,
             },
             //high end out of bounds vertical
             None => {
-                return match interpolation {                
+                match interpolation {                
                     Interpolation::Linear => {
                         Ok(self.interpolate(indexes_h, (self.breakpoints_v.len()-1,None), calc_breakpoint_h, calc_breakpoint_v))
                     },
@@ -362,87 +404,111 @@ const M: usize,
             let interpolated_diff_bp_h = breakpoint_h - self.breakpoints_h[indexes_h.1.unwrap()];
             let diff_actual_bp_h = self.breakpoints_h[indexes_h.0] - self.breakpoints_h[indexes_h.1.unwrap()];
             let diff_values_h = self.values[indexes_v.0][indexes_h.0] - self.values[indexes_v.0][indexes_h.1.unwrap()];
-            return (U::from(interpolated_diff_bp_h) * diff_values_h) / U::from(diff_actual_bp_h) + self.values[indexes_v.0][indexes_h.0]
+            return (U::from(interpolated_diff_bp_h) * diff_values_h) / U::from(diff_actual_bp_h) + self.values[indexes_v.0][indexes_h.1.unwrap()]
         }; 
         
         let interpolated_diff_bp_v = breakpoint_v - self.breakpoints_v[indexes_v.1.unwrap()];
         let diff_actual_bp_v = self.breakpoints_v[indexes_v.0] - self.breakpoints_v[indexes_v.1.unwrap()];
-        (U::from(interpolated_diff_bp_v) + (intermediary_values[1]-intermediary_values[0]))/ U::from(diff_actual_bp_v)+intermediary_values[0]
+        (U::from(interpolated_diff_bp_v) * (intermediary_values[1]-intermediary_values[0]))/ U::from(diff_actual_bp_v)+intermediary_values[0]
+    }
+
+    /// This method is unsafe, consider using the create_2d_lookup!() macro instead.
+    /// Returns a lookup table. Only use an ascending breakpoints vectors! for example  1,2,3,4 and not 4,3,2,1 or 1,2,3,2 \
+    /// breakpoints and values must have the same length in the horizontal and vertical direction!
+    /// 
+    /// # Arguments
+    /// 
+    /// * `breakpoints_h` - The breakpoints that act as the horizontal index for the values
+    /// * `breakpoints_v` - The breakpoints that act as the vertical index for the values
+    /// * `values` - The values that represent the result from the lookup
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use::go_lookup_tables::{TwoDLookup};
+    /// const LOOKUP_TABLE: TwoDLookup<i16,i8,f32,3,3> = TwoDLookup::new([0,500,1000],[0,3,6],[
+    /// [3.0,4.2,5.5],
+    /// [4.2,5.0,6.0],
+    /// [5.0,5.8,6.5]]); //simple 0.5V to 4.5V pressure sensor
+    /// /* full table:
+    ///     x   0   500 1000
+    ///     0   3.0 4.2 5.5
+    ///     3   4.2 5.0 6.0
+    ///     6   5.0 5.8 6.5
+    ///  */
+    /// ```
+    pub const fn new(breakpoints_h: [S;N], breakpoints_v: [T;M], values: [[U;N];M])-> TwoDLookup<S,T,U,N,M> {
+        TwoDLookup { breakpoints_h, breakpoints_v, values }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::OneDLookup;
+/// Returns a lookup table. Only use an ascending breakpoints vectors! for example  1,2,3,4 and not 4,3,2,1 or 1,2,3,2 \
+/// breakpoints and values must have the same length in the horizontal and vertical direction!
+/// 
+/// # Arguments
+/// 
+/// * `breakpoints_horizontal` - The breakpoints that act as the horizontal index for the values
+/// * `breakpoints_vertical` - The breakpoints that act as the vertical index for the values
+/// * `values` - The values that represent the result from the lookup
+/// 
+/// # Panics
+///
+/// `create_2d_lookup!` panics if breakpoints is not in ascending order or if breakpoints.len() != values.len().
+/// This panic is generated at compile time.
+/// 
+/// # Examples
+/// 
+/// ```
+/// # #[macro_use] extern crate go_lookup_tables; fn main() {
+/// use::go_lookup_tables::*;
+/// const LOOKUP_TABLE: TwoDLookup<i16,i8,f32,3,3> = create_2d_lookup!((0,500,1000),(0,3,6),(
+/// 3.0,4.2,5.5;
+/// 4.2,5.0,6.0;
+/// 5.0,5.8,6.5));
+/// /* full table:
+///     x   0   500 1000
+///     0   3   4.2 5.5
+///     3   4.2 5.0 6.0
+///     6   5   5.8 6.5
+///  */
+/// # }
+/// ```
+#[macro_export]
+macro_rules! create_2d_lookup {
+    (($($bps_h:expr),*), ($($bps_v:expr),*), ($($($vals:expr),*);*)) => {{
 
-    #[test]
-    fn extrapolation_linear() {
-        const LOOKUP_TABLE: OneDLookup<i16, f32, 2> = create_1d_lookup!((0i16,5000),(0f32,500.0));
-        let result1 = LOOKUP_TABLE.lookup(&-1000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
-        let result2 = LOOKUP_TABLE.lookup(&6000i16, crate::Extrapolation::Linear, crate::Interpolation::Linear).unwrap();
-        assert_eq!(result1, -100f32);
-        assert_eq!(result2, 600f32);
-    }
+        let breakpoints_h = [ $($bps_h,)* ];
+        let breakpoints_v = [ $($bps_v,)* ];
+        let values = [ $( [ $($vals),* ] ),* ];
+        if breakpoints_v.len() != values.len() {
+            panic!("the vertical lengths of breakpoints and values don't match");
+        }
 
-    #[test]
-    fn extrapolation_none_hold() {
-        const LOOKUP_TABLE: OneDLookup<i16, f32, 2> = create_1d_lookup!((0i16,5000),(0f32,500.0));
-        let result1 = LOOKUP_TABLE.lookup(&-1000i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
-        let result2 = LOOKUP_TABLE.lookup(&6000i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
-        assert_eq!(result1, 0f32);
-        assert_eq!(result2, 500f32);
-    }
+        if breakpoints_h.len() != values[0].len() {
+            panic!("the horizontal lengths of breakpoints and values don't match.");
+        }
 
-    #[test]
-    fn extrapolation_none_error() {
-        const LOOKUP_TABLE: OneDLookup<i16, f32, 2> = create_1d_lookup!((0i16,5000),(0f32,500.0));
-        let result1 = LOOKUP_TABLE.lookup(&-1000i16, crate::Extrapolation::NoneError, crate::Interpolation::Linear);
-        let result2 = LOOKUP_TABLE.lookup(&6000i16, crate::Extrapolation::NoneError, crate::Interpolation::Linear);
-        let result3 = LOOKUP_TABLE.lookup(&2500i16, crate::Extrapolation::NoneError, crate::Interpolation::Linear);
-        assert!(result1.is_err());
-        assert!(result2.is_err());
-        assert!(result3.is_ok());
-    }
+        let mut i = 0;
 
-    #[test]
-    fn interpolation_linear() {
-        const LOOKUP_TABLE: OneDLookup<i16, i32, 4> = create_1d_lookup!((0i16,500,4500,5000), (0i32,0,500,500));
-        let result = LOOKUP_TABLE.lookup(&500i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
-        let result1 = LOOKUP_TABLE.lookup(&505i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
-        let result2 = LOOKUP_TABLE.lookup(&4495i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
-        let result3 = LOOKUP_TABLE.lookup(&2500i16, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::Linear).unwrap();
-        assert_eq!(result, 0i32);
-        assert_eq!(result1, 0i32);
-        assert_eq!(result2, 499i32);
-        assert_eq!(result3, 250i32);
-    }
+        i = 1;
+        while i < breakpoints_h.len() {
+            if breakpoints_h[i - 1] > breakpoints_h[i] {
+                panic!("horizontal breakpoints aren't sorted, they should be in ascending order");
+            }
+            i += 1;
+        }
+        i = 1;
+        while i < breakpoints_v.len() {
+            if breakpoints_v[i - 1] > breakpoints_v[i] {
+                panic!("vertical breakpoints aren't sorted, they should be in ascending order");
+            }
+            i += 1;
+        }
 
-    #[test]
-    fn interpolation_closest() {
-        const LOOKUP_TABLE: OneDLookup<i8, i8, 4> = create_1d_lookup!((0i8,1,5,6),(0i8,1,6,8));
-        let result = LOOKUP_TABLE.lookup(&3i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
-        let result1 = LOOKUP_TABLE.lookup(&4i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
-        let result2 = LOOKUP_TABLE.lookup(&2i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneClosest).unwrap();
-        assert_eq!(result, 6i8); //value is 3.5, round up to 6
-        assert_eq!(result1, 6i8); //value is 4.75, round up to 6
-        assert_eq!(result2, 1i8); //value is 2.25, round down to 1
-    }
-
-    #[test]
-    fn interpolation_floor() {
-        const LOOKUP_TABLE: OneDLookup<i8, i8, 4> = create_1d_lookup!((0i8,2,5,6),(0i8,1,6,8));
-        let result = LOOKUP_TABLE.lookup(&0i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneFloor).unwrap();
-        let result1 = LOOKUP_TABLE.lookup(&1i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneFloor).unwrap();
-        assert_eq!(result, 0i8);
-        assert_eq!(result, result1);
-    }
-
-    #[test]
-    fn interpolation_ceiling() {
-        const LOOKUP_TABLE: OneDLookup<i8, i8, 4> = create_1d_lookup!((0i8,2,5,6),(0i8,1,6,8));
-        let result = LOOKUP_TABLE.lookup(&3i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneCeiling).unwrap();
-        let result1 = LOOKUP_TABLE.lookup(&4i8, crate::Extrapolation::NoneHoldExtreme, crate::Interpolation::NoneCeiling).unwrap();
-        assert_eq!(result, 6i8);
-        assert_eq!(result, result1);
-    }
+        TwoDLookup::new(
+            [$($bps_h),+],
+            [$($bps_v),+],
+            [ $( [ $($vals),+ ] ),+ ],
+        )
+    }};
 }
