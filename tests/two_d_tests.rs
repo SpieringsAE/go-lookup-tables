@@ -2,10 +2,10 @@ use go_lookup_tables::*;
 
 #[test]
 fn linear_interpolation_2d() {
-    const LOOKUP_TABLE: TwoDLookup<i16,i8,f32,3,3> = create_2d_lookup!((0i16,500,1000),(0i8,3,6),(
-        3f32,4.2,5.5;
-        4.2f32,5.0,6.0;
-        5f32,5.8,6.5));
+    const LOOKUP_TABLE: TwoDLookup<i16,i8,f32,3,3> = create_2d_lookup!((0,500,1000),(0,3,6),(
+        3.0,    4.2,    5.5;
+        4.2,    5.0,    6.0;
+        5.0,    5.8,    6.5));
     //interpolation
     let result1 = LOOKUP_TABLE.lookup(&750i16, &4i8, Interpolation::Linear).unwrap();
     //double extrapolation
@@ -33,10 +33,10 @@ fn linear_interpolation_2d() {
 
 #[test]
 fn no_interpolation_floor_2d() {
-    const LOOKUP_TABLE: TwoDLookup<i16,i8,f32,3,3> = create_2d_lookup!((0i16,500,1000),(0i8,3,6),(
-        3f32,4.2,5.5;
-        4.2f32,5.0,6.0;
-        5f32,5.8,6.5));
+    const LOOKUP_TABLE: TwoDLookup<i16,i8,f32,3,3> = create_2d_lookup!((0,500,1000),(0,3,6),(
+        3.0,    4.2,    5.5;
+        4.2,    5.0,    6.0;
+        5.0,    5.8,    6.5));
     //interpolation
     let result1 = LOOKUP_TABLE.lookup(&750i16, &4i8, Interpolation::NoneFloor).unwrap();
     //double extrapolation
@@ -65,10 +65,10 @@ fn no_interpolation_floor_2d() {
 
 #[test]
 fn no_interpolation_ceiling_2d() {
-    const LOOKUP_TABLE: TwoDLookup<i16,i8,f32,3,3> = create_2d_lookup!((0i16,500,1000),(0i8,3,6),(
-        3f32,4.2,5.5;
-        4.2f32,5.0,6.0;
-        5f32,5.8,6.5));
+    const LOOKUP_TABLE: TwoDLookup<i16,i8,f32,3,3> = create_2d_lookup!((0,500,1000),(0,3,6),(
+        3.0,    4.2,    5.5;
+        4.2,    5.0,    6.0;
+        5.0,    5.8,    6.5));
     //interpolation
     let result1 = LOOKUP_TABLE.lookup(&750i16, &4i8, Interpolation::NoneCeiling).unwrap();
     //double extrapolation
@@ -97,10 +97,10 @@ fn no_interpolation_ceiling_2d() {
 
 #[test]
 fn no_interpolation_closest_2d() {
-    const LOOKUP_TABLE: TwoDLookup<i16,i8,f32,3,3> = create_2d_lookup!((0i16,500,1000),(0i8,3,6),(
-        3f32,4.2,5.5;
-        4.2f32,5.0,6.0;
-        5f32,5.8,6.5));
+    const LOOKUP_TABLE: TwoDLookup<i16,i8,f32,3,3> = create_2d_lookup!((0,500,1000),(0,3,6),(
+        3.0,    4.2,    5.5;
+        4.2,    5.0,    6.0;
+        5.0,    5.8,    6.5));
     //interpolation
     let result1 = LOOKUP_TABLE.lookup(&750i16, &4i8, Interpolation::NoneClosest).unwrap();
     //double extrapolation
